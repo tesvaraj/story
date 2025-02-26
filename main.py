@@ -1,9 +1,9 @@
 import os
-from typing import List, Dict, Any
-from langchain_core.prompts import ChatPromptTemplate
+from typing import List, Dict, Any, Optional
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_community.llms import Together
-from langchain_core.callbacks import CallbackManagerForToolInvocation
 from langchain.tools import BaseTool
 from langchain.agents import create_structured_chat_agent, AgentExecutor
 from langchain.tools.render import format_tool_to_openai_function
@@ -13,11 +13,17 @@ import base64
 from io import BytesIO
 from PIL import Image
 import streamlit as st
+from dotenv import load_dotenv
 
-# Environment variables for API keys
-# Make sure to set these in your environment
-# export TOGETHER_API_KEY="your_together_api_key"
-TOGETHER_API_KEY = os.environ.get("TOGETHER_API_KEY")
+# Load environment variables from .env file
+load_dotenv()
+
+# Get API key from environment variables
+TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
+
+# Verify API key is available
+if not TOGETHER_API_KEY:
+    raise ValueError("TOGETHER_API_KEY not found in environment variables. Please check your .env file.")
 
 # LLM Setup
 llm = Together(
@@ -29,14 +35,15 @@ llm = Together(
 
 # Image Generation Tool
 class ImageGenerationTool(BaseTool):
-    name = "image_generator"
-    description = """
+    # Fix: Add proper type annotations for all fields including overrides from BaseTool
+    name: str = "image_generator"
+    description: str = """
     Generate an image using the FLUX.1-dev-lora model on TogetherAI. 
     This tool is useful when you need to create a high-quality image based on a detailed prompt.
     Input should be a detailed description of the image to generate.
     """
     
-    def _run(self, prompt: str, run_manager: CallbackManagerForToolInvocation = None) -> str:
+    def _run(self, prompt: str) -> str:
         """Run the image generation based on the prompt."""
         try:
             headers = {
@@ -46,7 +53,8 @@ class ImageGenerationTool(BaseTool):
             
             payload = {
                 "model": "black-forest-labs/FLUX.1-dev-lora",
-                "prompt": prompt,
+                "image_loras": [{"path":"http://hills.ccsf.edu/~clai74/nelson_unet.safetensors","scale":1}],
+                "prompt": "n3lson man "+prompt,
                 "negative_prompt": "low quality, blurry, distorted features, unrealistic, bad anatomy, multiple limbs, excessive limbs",
                 "height": 1024,
                 "width": 768,
@@ -66,13 +74,13 @@ class ImageGenerationTool(BaseTool):
                 image_b64 = result["output"]["images"][0]
                 
                 # For Streamlit, we'll return the base64 string to display
-                return f"Image generated successfully! Base64: {image_b64[:20]}..."
+                return f"Image generated successfully! Base64: {image_b64}"
             else:
                 return f"Error generating image: {response.status_code} - {response.text}"
         except Exception as e:
             return f"Error: {str(e)}"
     
-    def _arun(self, prompt: str):
+    def _arun(self, prompt: str) -> None:
         """Async version (not implemented)"""
         raise NotImplementedError("Async version not implemented")
 
@@ -83,8 +91,8 @@ image_tool = ImageGenerationTool()
 tools = [image_tool]
 llm_with_tools = llm.bind(functions=[format_tool_to_openai_function(t) for t in tools])
 
-# Prompt Template for the agent
-prompt = ChatPromptTemplate.from_template("""
+# Updated Prompt Template for the agent
+system_message = """
 You are an AI assistant helping an Instagram influencer create content based on simple keyword ideas.
 Your job is to take simple keywords and convert them into detailed, visually appealing prompts for image generation.
 
@@ -100,13 +108,21 @@ For each keyword input, create a detailed prompt that includes:
 6. Overall mood and aesthetic
 7. Photographic style (e.g., "portrait photography", "candid shot", etc.)
 
-KEYWORD INPUT: {keyword}
-
 Remember to keep the content tasteful and appropriate for a mainstream audience.
 After generating the prompt, use the image_generator tool to create the image.
-""")
+"""
 
-# Create the agent
+# Fix: Properly structure the prompt template for a structured chat agent
+prompt = ChatPromptTemplate.from_messages(
+    [
+        SystemMessage(content=system_message),
+        MessagesPlaceholder(variable_name="chat_history", optional=True),
+        HumanMessage(content="Generate content for the following keyword idea: {keyword}"),
+        MessagesPlaceholder(variable_name="agent_scratchpad"),
+    ]
+)
+
+# Create the agent with the fixed prompt
 agent = create_structured_chat_agent(llm_with_tools, tools, prompt)
 agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
 
@@ -144,16 +160,20 @@ def main():
                 if "Base64:" in result["output"]:
                     try:
                         base64_start = result["output"].find("Base64:") + 7
-                        base64_end = result["output"].find("...", base64_start)
+                        # Find the end of the base64 string - either end of output or first non-base64 character
+                        base64_text = result["output"][base64_start:].strip()
                         
-                        # This is just to show that we found the base64 string
-                        # In a real implementation, you'd have the full base64 string
-                        st.write("Image generated! (Base64 data found)")
+                        # In a real implementation, decode and display the image
+                        st.write("Image generated successfully!")
                         
-                        # In a real implementation with the full base64:
-                        # image_data = base64.b64decode(base64_string)
-                        # image = Image.open(BytesIO(image_data))
-                        # st.image(image, caption="Generated Image")
+                        # Display image if we have valid base64 data
+                        try:
+                            image_data = base64.b64decode(base64_text)
+                            image = Image.open(BytesIO(image_data))
+                            st.image(image, caption="Generated Image")
+                        except Exception as e:
+                            st.error(f"Error displaying image: {str(e)}")
+                            st.write("Base64 data may be truncated or invalid")
                     except Exception as e:
                         st.error(f"Error processing image: {str(e)}")
         else:
