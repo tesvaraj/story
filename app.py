@@ -36,16 +36,16 @@ def generate_image_prompts(concept, num_prompts=3, include_nelson=True):
             system_message = """
             You are a specialized image prompt generator. 
             Create detailed, high-quality image prompts for the concept provided.
-            Each prompt should be different but related to the same concept.
+            Each prompt should be different but related to the same concept. Max of 10 words.
             Make the prompts specific, visual, and detailed enough for an image generation model.
-            Include n3lson (a person) in the scene.
+            Prompt MUST start with 'n3lson man', eg: 'n3lson man on beach' since 'n3lson' is the keyword for the image fine tuned model.
             ONLY return the prompts, one per line, with no additional explanation or commentary.
             """
         else:
             system_message = """
             You are a specialized image prompt generator. 
             Create detailed, high-quality image prompts for the concept provided.
-            Each prompt should be different but related to the same concept.
+            Each prompt should be different but related to the same concept. Max of 10 words.
             Make the prompts specific, visual, and detailed enough for an image generation model.
             ONLY return the prompts, one per line, with no additional explanation or commentary.
             """
@@ -238,7 +238,7 @@ class ImageGenerator:
                     print(f"No image data returned from Ablo for prompt {i+1}")
                     
             except Exception as e:
-                print(f"Error generating image {i+1} with Ablo: {e}")
+                print(f"Error generating image {i+1} with Ablo: {e}\n")
                 
         # Store all generated images
         self.generated_images = images
