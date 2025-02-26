@@ -169,10 +169,10 @@ class ImageGenerator:
         self.generated_images = images
         
         return images
-        
+            
     def generate_images_with_ablo(self, prompts, style_id="a58f5b3c-2263-4072-8242-f23c52315125"):
         """
-        Generate one image for each provided prompt using Ablo API
+        Generate images for each provided prompt using Ablo API
         
         Args:
             prompts (list): List of text prompts to generate images from
@@ -218,22 +218,19 @@ class ImageGenerator:
                 # Parse the response
                 result = response.json()
                 
-                # Extract image data from the response
-                # Note: This might need to be adjusted based on Ablo's actual response format
-                if "image" in result and result["image"]:
-                    # If Ablo returns a URL, fetch the image and convert to base64
-                    if result["image"].startswith("http"):
-                        image_response = requests.get(result["image"])
-                        image_response.raise_for_status()
-                        image_bytes = image_response.content
-                        image_base64 = base64.b64encode(image_bytes).decode("utf-8")
-                        images.append(image_base64)
-                    # If Ablo returns base64 directly
-                    else:
-                        images.append(result["image"])
-                        
-                    self.prompts_used.append(prompt)
-                    print(f"Image {i+1} generated successfully")
+                # Extract image URLs from the response - Ablo returns multiple images
+                if "images" in result and result["images"]:
+                    for img_data in result["images"]:
+                        if "url" in img_data:
+                            # Fetch the image from URL and convert to base64
+                            image_url = img_data["url"]
+                            image_response = requests.get(image_url)
+                            image_response.raise_for_status()
+                            image_bytes = image_response.content
+                            image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+                            images.append(image_base64)
+                            self.prompts_used.append(f"{prompt} (variant {len(images)})")
+                            print(f"Image variant {len(images)} for prompt {i+1} generated successfully")
                 else:
                     print(f"No image data returned from Ablo for prompt {i+1}")
                     
@@ -244,6 +241,7 @@ class ImageGenerator:
         self.generated_images = images
         
         return images
+
     
     def display_images_for_selection(self, provider=""):
         """
