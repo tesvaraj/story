@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Image Generator</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>AI Image Generator</h1>
+        <p class="description">Describe the image you want to generate, and our AI will create it for you!</p>
+        
+        <div class="input-container">
+            <textarea 
+                id="prompt-input" 
+                placeholder="Example: I want a picture of me holding Nike shoes in Paris."
+                rows="4"></textarea>
+            <button id="generate-btn">Generate Image</button>
+        </div>
+        
+        <div class="result-container">
+            <div id="loading" class="hidden">
+                <div class="spinner"></div>
+                <p>Creating your image...</p>
+            </div>
+            <div id="result" class="hidden">
+                <h2>Your Generated Image</h2>
+                <img id="generated-image" src="" alt="Generated image">
+                <button id="download-btn">Download Image</button>
+            </div>
+        </div>
+    </div>
+    
+    <script src="script.js"></script>
+</body>
+</html> 
