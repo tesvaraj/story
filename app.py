@@ -238,7 +238,7 @@ class ImageGenerator:
                     print(f"No image data returned from Ablo for prompt {i+1}")
                     
             except Exception as e:
-                print(f"Error generating image {i+1} with Ablo: {e}\n")
+                print(f"Error generating image {i+1} with Ablo: {e}")
                 
         # Store all generated images
         self.generated_images = images
@@ -380,8 +380,11 @@ def create_images_from_concept(concept, num_variations=3, provider="together"):
     # Determine if we need to include n3lson in prompts based on provider
     include_nelson = provider.lower() == "together"
     
+    # For Ablo, we only need 1 prompt since it generates multiple variations per prompt
+    num_prompts = 1 if provider.lower() == "ablo" else num_variations
+    
     # Step 1: Generate detailed prompts from the concept
-    prompts = generate_image_prompts(concept, num_variations, include_nelson)
+    prompts = generate_image_prompts(concept, num_prompts, include_nelson)
     
     # Step 2: Generate images from the prompts using the selected provider
     try:
