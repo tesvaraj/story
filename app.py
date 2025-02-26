@@ -8,17 +8,20 @@ import io
 import tempfile
 import webbrowser
 from dotenv import load_dotenv
+import argparse
+import sys
 
 # Load environment variables
 load_dotenv()
 
-def generate_image_prompts(concept, num_prompts=3):
+def generate_image_prompts(concept, num_prompts=3, include_nelson=True):
     """
     Use the Nillion API to generate detailed image prompts from a simple concept
     
     Args:
         concept (str): Simple concept like "on beach"
         num_prompts (int): Number of different prompts to generate
+        include_nelson (bool): Whether to include n3lson in the prompts
         
     Returns:
         list: List of generated detailed prompts
@@ -29,14 +32,23 @@ def generate_image_prompts(concept, num_prompts=3):
         api_key = os.environ.get("NILAI_API_KEY", "Nillion2025")
         
         # Prepare system message to instruct LLM to generate image prompts
-        system_message = """
-        You are a specialized image prompt generator. 
-        Create detailed, high-quality image prompts for the concept provided.
-        Each prompt should be different but related to the same concept.
-        Make the prompts specific, visual, and detailed enough for an image generation model.
-        ONLY return the prompts, one per line, with no additional explanation or commentary.
-        Prompt MUST start with 'n3lson man', eg: 'n3lson man on beach' since 'n3lson' is the keyword for the image fine tuned model.
-        """
+        if include_nelson:
+            system_message = """
+            You are a specialized image prompt generator. 
+            Create detailed, high-quality image prompts for the concept provided.
+            Each prompt should be different but related to the same concept.
+            Make the prompts specific, visual, and detailed enough for an image generation model.
+            Include n3lson (a person) in the scene.
+            ONLY return the prompts, one per line, with no additional explanation or commentary.
+            """
+        else:
+            system_message = """
+            You are a specialized image prompt generator. 
+            Create detailed, high-quality image prompts for the concept provided.
+            Each prompt should be different but related to the same concept.
+            Make the prompts specific, visual, and detailed enough for an image generation model.
+            ONLY return the prompts, one per line, with no additional explanation or commentary.
+            """
         
         # Prepare the request
         url = f"{api_url}/v1/chat/completions"
@@ -76,7 +88,10 @@ def generate_image_prompts(concept, num_prompts=3):
     except Exception as error:
         print(f"Error generating prompts: {error}")
         # Fallback prompts if API call fails
-        return [f"n3lson {concept} realistic photo high definition" for _ in range(num_prompts)]
+        if include_nelson:
+            return [f"n3lson {concept} realistic photo high definition" for _ in range(num_prompts)]
+        else:
+            return [f"{concept} realistic photo high definition" for _ in range(num_prompts)]
 
 
 class ImageGenerator:
@@ -84,16 +99,20 @@ class ImageGenerator:
         # Load environment variables if not already loaded
         load_dotenv()
         
-        # Get API key from environment
-        self.api_key = os.environ.get("TOGETHER_API_KEY")
-        if not self.api_key:
-            raise ValueError("TOGETHER_API_KEY is required. Add it to .env file.")
+        # Get API keys from environment
+        self.together_api_key = os.environ.get("TOGETHER_API_KEY")
+        self.ablo_api_key = os.environ.get("ABLO_KEY")
+        
+        # Initialize Together client if available
+        if self.together_api_key:
+            self.together_client = Together(api_key=self.together_api_key)
+        else:
+            self.together_client = None
             
-        self.client = Together(api_key=self.api_key)
         self.generated_images = []
         self.prompts_used = []
         
-    def generate_images_from_prompts(self, prompts, 
+    def generate_images_with_together(self, prompts, 
                                model="black-forest-labs/FLUX.1-dev-lora",
                                width=1024, 
                                height=768, 
@@ -101,7 +120,7 @@ class ImageGenerator:
                                lora_path="http://hills.ccsf.edu/~clai74/nelson_unet.safetensors",
                                lora_scale=1.0):
         """
-        Generate one image for each provided prompt
+        Generate one image for each provided prompt using Together API
         
         Args:
             prompts (list): List of text prompts to generate images from
@@ -115,13 +134,16 @@ class ImageGenerator:
         Returns:
             list: List of base64 encoded images
         """
+        if not self.together_api_key:
+            raise ValueError("TOGETHER_API_KEY is required for Together image generation. Add it to .env file.")
+            
         images = []
         self.prompts_used = []
         
         for i, prompt in enumerate(prompts):
             try:
-                print(f"Generating image {i+1}/{len(prompts)}...")
-                response = self.client.images.generate(
+                print(f"Generating image {i+1}/{len(prompts)} with Together...")
+                response = self.together_client.images.generate(
                     prompt=prompt,
                     model=model,
                     width=width,
@@ -147,11 +169,89 @@ class ImageGenerator:
         self.generated_images = images
         
         return images
+        
+    def generate_images_with_ablo(self, prompts, style_id="a58f5b3c-2263-4072-8242-f23c52315125"):
+        """
+        Generate one image for each provided prompt using Ablo API
+        
+        Args:
+            prompts (list): List of text prompts to generate images from
+            style_id (str): Style ID for Ablo image generation
+            
+        Returns:
+            list: List of base64 encoded images
+        """
+        if not self.ablo_api_key:
+            raise ValueError("ABLO_KEY is required for Ablo image generation. Add it to .env file.")
+            
+        images = []
+        self.prompts_used = []
+        
+        for i, prompt in enumerate(prompts):
+            try:
+                print(f"Generating image {i+1}/{len(prompts)} with Ablo...")
+                
+                # For Ablo, trim the first two words if they contain "n3lson"
+                if prompt.lower().startswith("n3lson"):
+                    words = prompt.split()
+                    if len(words) > 2:
+                        ablo_prompt = " ".join(words[2:])
+                    else:
+                        ablo_prompt = prompt
+                else:
+                    ablo_prompt = prompt
+                
+                # Make the API call to Ablo
+                url = "https://api.ablo.ai/image-maker"
+                headers = {
+                    "Content-Type": "application/json",
+                    "x-api-key": self.ablo_api_key
+                }
+                payload = {
+                    "styleId": style_id,
+                    "freeText": ablo_prompt
+                }
+                
+                response = requests.post(url, headers=headers, json=payload)
+                response.raise_for_status()
+                
+                # Parse the response
+                result = response.json()
+                
+                # Extract image data from the response
+                # Note: This might need to be adjusted based on Ablo's actual response format
+                if "image" in result and result["image"]:
+                    # If Ablo returns a URL, fetch the image and convert to base64
+                    if result["image"].startswith("http"):
+                        image_response = requests.get(result["image"])
+                        image_response.raise_for_status()
+                        image_bytes = image_response.content
+                        image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+                        images.append(image_base64)
+                    # If Ablo returns base64 directly
+                    else:
+                        images.append(result["image"])
+                        
+                    self.prompts_used.append(prompt)
+                    print(f"Image {i+1} generated successfully")
+                else:
+                    print(f"No image data returned from Ablo for prompt {i+1}")
+                    
+            except Exception as e:
+                print(f"Error generating image {i+1} with Ablo: {e}")
+                
+        # Store all generated images
+        self.generated_images = images
+        
+        return images
     
-    def display_images_for_selection(self):
+    def display_images_for_selection(self, provider=""):
         """
         Display the generated images in a simple HTML page for selection
         
+        Args:
+            provider (str): Name of the provider used to generate images
+            
         Returns:
             str: Path to the HTML file
         """
@@ -175,10 +275,22 @@ class ImageGenerator:
                 .image-option .select-btn:hover { background: #45a049; }
                 .image-info { padding: 10px; background: #f9f9f9; }
                 .prompt-text { font-size: 12px; color: #666; margin: 5px 0; }
+                .provider-badge { display: inline-block; background: #e0e0e0; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-left: 8px; }
             </style>
         </head>
         <body>
+        """
+        
+        if provider:
+            html_content += f"""
+            <h1>Select an Image <span class="provider-badge">Generated with {provider}</span></h1>
+            """
+        else:
+            html_content += """
             <h1>Select an Image</h1>
+            """
+            
+        html_content += """
             <div class="image-container">
         """
         
@@ -249,32 +361,40 @@ class ImageGenerator:
             return None
 
 
-def create_images_from_concept(concept, num_variations=3):
+def create_images_from_concept(concept, num_variations=3, provider="together"):
     """
     Main function to generate images from a simple concept
     
     1. Convert concept to detailed prompts using LLM
-    2. Generate an image for each prompt
+    2. Generate an image for each prompt using the selected provider
     3. Display images for selection
     
     Args:
         concept (str): Simple concept like "on beach"
         num_variations (int): Number of image variations to generate
+        provider (str): Image generation provider ("together" or "ablo")
         
     Returns:
         tuple: (list of generated images, list of prompts used)
     """
-    # Step 1: Generate detailed prompts from the concept
-    prompts = generate_image_prompts(concept, num_variations)
+    # Determine if we need to include n3lson in prompts based on provider
+    include_nelson = provider.lower() == "together"
     
-    # Step 2: Generate images from the prompts
+    # Step 1: Generate detailed prompts from the concept
+    prompts = generate_image_prompts(concept, num_variations, include_nelson)
+    
+    # Step 2: Generate images from the prompts using the selected provider
     try:
         generator = ImageGenerator()
-        images = generator.generate_images_from_prompts(prompts)
+        
+        if provider.lower() == "ablo":
+            images = generator.generate_images_with_ablo(prompts)
+        else:  # Default to Together
+            images = generator.generate_images_with_together(prompts)
         
         # Step 3: Display images for selection
         if images:
-            generator.display_images_for_selection()
+            generator.display_images_for_selection(provider)
             return images, generator.prompts_used
         else:
             print("No images were generated")
@@ -285,25 +405,45 @@ def create_images_from_concept(concept, num_variations=3):
         return [], []
 
 
-# Example usage
-if __name__ == "__main__":
-    import sys
+def main():
+    """
+    Main entry point with argument parsing
+    """
+    # Set up argument parser
+    parser = argparse.ArgumentParser(description="Generate images from a simple concept using AI")
+    parser.add_argument("concept", nargs="*", help="Concept to generate images for (e.g., 'on beach')")
+    parser.add_argument("--provider", "-p", choices=["together", "ablo"], default="together", 
+                       help="Image generation provider to use (together or ablo)")
+    parser.add_argument("--variations", "-n", type=int, default=3,
+                       help="Number of image variations to generate")
     
-    # Verify API keys are available
-    if not os.environ.get("TOGETHER_API_KEY"):
+    # Parse arguments
+    args = parser.parse_args()
+    
+    # Get concept from arguments or use default
+    user_concept = " ".join(args.concept) if args.concept else "on beach with sunglasses"
+    
+    # Verify required API keys are available
+    if args.provider.lower() == "together" and not os.environ.get("TOGETHER_API_KEY"):
         print("Error: TOGETHER_API_KEY not found in environment variables.")
         print("Please add it to your .env file in the format: TOGETHER_API_KEY=your_api_key_here")
         sys.exit(1)
+    elif args.provider.lower() == "ablo" and not os.environ.get("ABLO_KEY"):
+        print("Error: ABLO_KEY not found in environment variables.")
+        print("Please add it to your .env file in the format: ABLO_KEY=your_api_key_here")
+        sys.exit(1)
         
-    # Get concept from command line or use default
-    user_concept = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "on beach with sunglasses"
-    
-    # Number of variations to generate
-    num_variations = 3
-    
-    print(f"Generating {num_variations} images for concept: '{user_concept}'")
+    print(f"Generating {args.variations} images for concept: '{user_concept}' using {args.provider}")
     
     # Generate images from concept
-    images, prompts = create_images_from_concept(user_concept, num_variations)
+    images, prompts = create_images_from_concept(user_concept, args.variations, args.provider)
     
     print(f"Generated {len(images)} images")
+    
+    # Return success or failure
+    return 0 if images else 1
+
+
+# Entry point
+if __name__ == "__main__":
+    sys.exit(main())
