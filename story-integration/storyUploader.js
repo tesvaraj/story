@@ -187,36 +187,49 @@ async function registerOnStoryProtocol(ipfsCid, prompt) {
     console.log('Registration parameters:', JSON.stringify(registerParams, null, 2));
     
     // Use the ipAsset.register method with the proper parameters
-    const tx = await storyClient.ipAsset.register(registerParams);
-    let txHash = '';
+    const response = await storyClient.ipAsset.register(registerParams);
     
-    // Safely extract the transaction hash
-    if (tx && typeof tx === 'object') {
-      if (tx.hash) {
-        txHash = tx.hash;
-      } else if (typeof tx === 'string') {
-        txHash = tx;
+    // Extract transaction hash and IP Asset ID
+    let txHash = '';
+    let ipId = '';
+    
+    // Safely extract the transaction hash and IP Asset ID
+    if (response && typeof response === 'object') {
+      if (response.txHash) {
+        txHash = response.txHash;
+      } else if (typeof response === 'string') {
+        txHash = response;
       } else {
-        txHash = JSON.stringify(tx);
+        txHash = JSON.stringify(response);
       }
-    } else if (typeof tx === 'string') {
-      txHash = tx;
+      
+      // Extract the IP Asset ID if available
+      if (response.ipId) {
+        ipId = response.ipId;
+      }
+    } else if (typeof response === 'string') {
+      txHash = response;
     } else {
       txHash = 'unknown';
     }
     
     console.log(`Transaction successful!`);
     console.log(`Transaction hash (${typeof txHash}, length: ${txHash.length}): ${txHash}`);
-    console.log(`View transaction: https://explorer.aeneid.storyrpc.io/tx/${txHash}`);
+    if (ipId) {
+      console.log(`IP Asset ID: ${ipId}`);
+      console.log(`View IP Asset: https://aeneid.explorer.story.foundation/ipa/${ipId}`);
+    }
     console.log(`IPFS CID (length: ${ipfsCid.length}): ${ipfsCid}`);
     console.log(`View image: https://ipfs.io/ipfs/${ipfsCid}`);
     
     return {
       txHash,
       ipfsCid,
+      ipId,
       title,
       viewUrl: `https://ipfs.io/ipfs/${ipfsCid}`,
       explorerUrl: `https://explorer.aeneid.storyrpc.io/tx/${txHash}`,
+      ipAssetUrl: ipId ? `https://aeneid.explorer.story.foundation/ipa/${ipId}` : null
     };
   } catch (error) {
     console.error('Error registering on Story Protocol:', error.message);
@@ -255,6 +268,8 @@ async function uploadToStoryProtocol(imagePath, prompt) {
 Transaction Hash Length: ${result.txHash ? result.txHash.length : 0}
 IPFS CID: ${result.ipfsCid}
 IPFS CID Length: ${result.ipfsCid ? result.ipfsCid.length : 0}
+IP Asset ID: ${result.ipId || 'Not available'}
+IP Asset Explorer URL: ${result.ipAssetUrl || 'Not available'}
 Explorer URL: ${result.explorerUrl}
 View Image URL: ${result.viewUrl}
 Timestamp: ${new Date().toISOString()}`

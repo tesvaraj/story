@@ -11,9 +11,15 @@ import webbrowser
 from dotenv import load_dotenv
 import argparse
 import sys
+from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
 
 # Load environment variables
 load_dotenv()
+
+# Create Flask app
+app = Flask(__name__, static_folder='generated_images')
+CORS(app)  # Enable CORS for all routes
 
 def generate_image_prompts(concept, num_prompts=3, include_nelson=True):
     """
@@ -355,6 +361,8 @@ class ImageGenerator:
                         print(f"Transaction Hash Length: {len(str(upload_result.get('txHash', '')))}")
                         print(f"IPFS Hash: {upload_result.get('ipfsCid', 'N/A')}")
                         print(f"IPFS Hash Length: {len(str(upload_result.get('ipfsCid', '')))}")
+                        print(f"IP Asset ID: {upload_result.get('ipId', 'N/A')}")
+                        print(f"IP Asset URL: {upload_result.get('ipAssetUrl', 'N/A')}")
                         print(f"Explorer: {upload_result.get('explorerUrl', 'N/A')}")
                         print(f"Image IPFS: {upload_result.get('viewUrl', 'N/A')}")
                         print("=" * 70)
@@ -527,6 +535,8 @@ class ImageGenerator:
                             transactionDiv.innerHTML = `
                                 <p><strong>Transaction Hash:</strong> <code style="word-break: break-all; display: block; background: #f5f5f5; padding: 8px; overflow: auto;">${result.txHash}</code></p>
                                 <p><strong>IPFS Hash:</strong> <code style="word-break: break-all; display: block; background: #f5f5f5; padding: 8px; overflow: auto;">${result.ipfsCid || 'N/A'}</code></p>
+                                <p><strong>IP Asset ID:</strong> <code style="word-break: break-all; display: block; background: #f5f5f5; padding: 8px; overflow: auto;">${result.ipId || 'N/A'}</code></p>
+                                <p><strong>IP Asset URL:</strong> <a href="${result.ipAssetUrl || 'N/A'}" target="_blank">View IP Asset</a></p>
                                 <p><strong>Explorer:</strong> <a href="${result.explorerUrl}" target="_blank">View on Explorer</a></p>
                                 <p><strong>IPFS:</strong> <a href="${result.viewUrl}" target="_blank">View Image</a></p>
                             `;
@@ -574,6 +584,8 @@ class ImageGenerator:
                                         success: true,
                                         txHash: "0x" + Math.random().toString(16).substring(2, 66),
                                         ipfsCid: "Qm" + Math.random().toString(16).substring(2, 46),
+                                        ipId: "Qm" + Math.random().toString(16).substring(2, 46),
+                                        ipAssetUrl: "https://ipfs.io/ipfs/" + Math.random().toString(16).substring(2, 46),
                                         explorerUrl: "https://explorer.aeneid.storyrpc.io/tx/0x" + Math.random().toString(16).substring(2, 66),
                                         viewUrl: "https://ipfs.io/ipfs/Qm" + Math.random().toString(16).substring(2, 46)
                                     })
@@ -703,6 +715,8 @@ def create_images_from_concept(concept, num_variations=3, provider="together", u
                         print(f"Image {i+1}:")
                         print(f"  Transaction: {result.get('txHash', 'N/A')}")
                         print(f"  IPFS Hash: {result.get('ipfsCid', 'N/A')}")
+                        print(f"  IP Asset ID: {result.get('ipId', 'N/A')}")
+                        print(f"  IP Asset URL: {result.get('ipAssetUrl', 'N/A')}")
                         print(f"  Explorer: {result.get('explorerUrl', 'N/A')}")
                         print(f"  View Image: {result.get('viewUrl', 'N/A')}")
                         print("")
@@ -720,6 +734,73 @@ def create_images_from_concept(concept, num_variations=3, provider="together", u
         return [], []
 
 
+# API Endpoints
+@app.route('/api/generate-image', methods=['POST'])
+def api_generate_image():
+    """API endpoint to generate an image based on a prompt"""
+    data = request.json
+    if not data or 'prompt' not in data:
+        return jsonify({'error': 'Prompt is required'}), 400
+    
+    prompt = data['prompt']
+    provider = data.get('provider', 'together')
+    
+    try:
+        print(f"API received prompt: '{prompt}' with provider '{provider}'")
+        
+        # Create generator instance
+        generator = ImageGenerator()
+        
+        # Determine if we need to add n3lson prefix based on provider
+        include_nelson = provider.lower() == "together"
+        
+        # Generate detailed prompts from the concept
+        prompts = generate_image_prompts(prompt, 1, include_nelson)
+        if not prompts:
+            return jsonify({'error': 'Failed to generate prompts'}), 500
+        
+        # Use the first generated prompt to create an image
+        if provider.lower() == "ablo":
+            images = generator.generate_images_with_ablo(prompts)
+        else:  # Default to Together
+            images = generator.generate_images_with_together(prompts)
+        
+        if not images:
+            return jsonify({'error': 'Failed to generate image'}), 500
+        
+        # Save the image
+        filepath = generator.save_image(0)
+        if not filepath:
+            return jsonify({'error': 'Failed to save image'}), 500
+        
+        # Get the full image URL for the frontend including host and port
+        image_name = os.path.basename(filepath)
+        image_url = f"http://{request.host}/api/images/{image_name}"
+        
+        # Return response
+        return jsonify({
+            'imageUrl': image_url,
+            'prompt': prompts[0],
+            'generatedAt': int(os.path.basename(filepath).split('_')[1]),
+            'provider': provider
+        })
+        
+    except Exception as e:
+        print(f"Error generating image via API: {e}")
+        return jsonify({'error': f'Error: {str(e)}'}), 500
+
+@app.route('/api/images/<image_name>', methods=['GET'])
+def get_image(image_name):
+    """Serve generated images"""
+    return send_from_directory('generated_images', image_name)
+
+# Run the Flask app when called with --serve flag
+def run_flask_server(host='0.0.0.0', port=5001):
+    """Run the Flask server"""
+    print(f"Starting API server at http://{host}:{port}")
+    print(f"API endpoint available at http://{host}:{port}/api/generate-image")
+    app.run(host=host, port=port, debug=True)
+
 def main():
     """
     Main entry point with argument parsing
@@ -733,9 +814,17 @@ def main():
                        help="Number of image variations to generate")
     parser.add_argument("--upload", "-u", action="store_true",
                        help="Automatically upload all generated images to Story Protocol")
+    parser.add_argument("--serve", "-s", action="store_true",
+                       help="Start the API server")
+    parser.add_argument("--port", type=int, default=5001,
+                       help="Port to run the API server on (default: 5001)")
     
     # Parse arguments
     args = parser.parse_args()
+    
+    # If --serve flag is provided, start the Flask server
+    if args.serve:
+        return run_flask_server(port=args.port)
     
     # Get concept from arguments or use default
     user_concept = " ".join(args.concept) if args.concept else "on beach with sunglasses"

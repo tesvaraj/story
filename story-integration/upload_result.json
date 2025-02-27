@@ -1,7 +1,4 @@
 {
-  "txHash": "0xfeb9db71eb28979bfecf2ee254a319b052625f8bee20a00e04ab3dbecb86a1d1",
-  "ipfsCid": "Qm6b41e60012627a987010bb40aa7d8f609f55de1709c8",
-  "explorerUrl": "https://explorer.aeneid.storyrpc.io/tx/0xfeb9db71eb28979bfecf2ee254a319b052625f8bee20a00e04ab3dbecb86a1d1",
-  "viewUrl": "https://ipfs.io/ipfs/Qm6b41e60012627a987010bb40aa7d8f609f55de1709c8",
-  "title": "Mock Transaction Test"
+  "error": "registerParams is not defined",
+  "timestamp": "2025-02-27T00:21:59.593Z"
 }
