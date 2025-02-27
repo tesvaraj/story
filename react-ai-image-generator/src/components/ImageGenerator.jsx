@@ -6,6 +6,7 @@ const ImageGenerator = ({ onImageGenerated, isLoading, setIsLoading }) => {
   const [prompt, setPrompt] = useState('');
   const [error, setError] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [useFlaskApi, setUseFlaskApi] = useState(false); // Toggle for API selection
 
   const promptSuggestions = [
     "A futuristic cityscape with flying cars",
@@ -32,8 +33,8 @@ const ImageGenerator = ({ onImageGenerated, isLoading, setIsLoading }) => {
     setIsLoading(true);
     
     try {
-      const response = await generateImage(prompt);
-      onImageGenerated(response.imageUrl, prompt);
+      const response = await generateImage(prompt, useFlaskApi);
+      onImageGenerated(response.imageUrl, prompt, response.generatedAt);
     } catch (err) {
       console.error('Error generating image:', err);
       setError('An error occurred while generating your image. Please try again.');
@@ -47,23 +48,42 @@ const ImageGenerator = ({ onImageGenerated, isLoading, setIsLoading }) => {
     setShowSuggestions(false);
   };
 
+  // Toggle API selection
+  const toggleApiSelection = () => {
+    setUseFlaskApi(!useFlaskApi);
+  };
+
   // Function to call the image generation API
-  async function generateImage(prompt) {
-    const apiUrl = '/api/generate-image';
+  async function generateImage(prompt, useFlask = false) {
+    // Select the API endpoint based on the toggle
+    const apiUrl = useFlask 
+      ? 'http://localhost:5001/api/generate-image' 
+      : '/api/generate-image';
     
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ prompt }),
-    });
+    console.log(`Using API endpoint: ${apiUrl}`);
     
-    if (!response.ok) {
-      throw new Error('Failed to generate image');
+    try {
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ prompt }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('API Error:', errorData);
+        throw new Error(errorData.error || `Server error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log('Image generated successfully:', data);
+      return data;
+    } catch (error) {
+      console.error('Network or API error:', error);
+      throw error;
     }
-    
-    return await response.json();
   }
 
   return (
@@ -113,6 +133,21 @@ const ImageGenerator = ({ onImageGenerated, isLoading, setIsLoading }) => {
         )}
         
         {error && <p className="error-message">{error}</p>}
+        
+        <div className="api-toggle">
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={useFlaskApi}
+              onChange={toggleApiSelection}
+              disabled={isLoading}
+            />
+            <span className="slider round"></span>
+          </label>
+          <span className="toggle-label">
+            Using {useFlaskApi ? 'Python Flask API' : 'Node.js API'}
+          </span>
+        </div>
         
         <button 
           type="submit" 

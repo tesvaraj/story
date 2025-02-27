@@ -23,8 +23,12 @@
         <p><strong>IPFS Hash:</strong></p>
         <pre id="ipfsCid" class="hash-display">Loading...</pre>
         
+        <p><strong>IP Asset ID:</strong></p>
+        <pre id="ipAssetId" class="hash-display">Loading...</pre>
+        
         <p><strong>Explorer:</strong> <a id="explorerLink" class="explorer-link" href="#" target="_blank">View on Explorer</a></p>
         <p><strong>IPFS:</strong> <a id="ipfsLink" class="explorer-link" href="#" target="_blank">View Image</a></p>
+        <p><strong>IP Asset:</strong> <a id="ipAssetLink" class="explorer-link" href="#" target="_blank">View on Story Protocol</a></p>
     </div>
     
     <script>
@@ -34,13 +38,22 @@
             .then(data => {
                 document.getElementById('txHash').textContent = data.txHash;
                 document.getElementById('ipfsCid').textContent = data.ipfsCid;
+                document.getElementById('ipAssetId').textContent = data.ipId || 'Not available';
                 document.getElementById('explorerLink').href = data.explorerUrl;
                 document.getElementById('ipfsLink').href = data.viewUrl;
+                
+                if (data.ipAssetUrl) {
+                    document.getElementById('ipAssetLink').href = data.ipAssetUrl;
+                } else {
+                    document.getElementById('ipAssetLink').textContent = 'Not available';
+                    document.getElementById('ipAssetLink').removeAttribute('href');
+                }
             })
             .catch(error => {
                 console.error('Error loading data:', error);
                 document.getElementById('txHash').textContent = 'Error loading data';
                 document.getElementById('ipfsCid').textContent = 'Error loading data';
+                document.getElementById('ipAssetId').textContent = 'Error loading data';
             });
     </script>
 </body>

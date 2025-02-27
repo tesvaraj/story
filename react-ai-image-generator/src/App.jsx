@@ -11,6 +11,7 @@ function App() {
   const [imageUrl, setImageUrl] = useState('')
   const [error, setError] = useState('')
   const [isDarkMode, setIsDarkMode] = useState(false)
+  const [generatedAt, setGeneratedAt] = useState(null)
   const [imageHistory, setImageHistory] = useState(() => {
     const savedHistory = localStorage.getItem('imageHistory')
     return savedHistory ? JSON.parse(savedHistory) : []
@@ -81,13 +82,18 @@ function App() {
     }
   }
 
-  const handleImageGenerated = (newImageUrl, newPrompt) => {
+  const handleImageGenerated = (newImageUrl, newPrompt, newGeneratedAt) => {
     setImageUrl(newImageUrl)
     setPrompt(newPrompt)
+    setGeneratedAt(newGeneratedAt)
     
     // Add to history only if it's a new image
     if (newImageUrl && newPrompt) {
-      const newHistoryItem = { imageUrl: newImageUrl, prompt: newPrompt }
+      const newHistoryItem = { 
+        imageUrl: newImageUrl, 
+        prompt: newPrompt,
+        generatedAt: newGeneratedAt
+      }
       
       // Check if this exact combination already exists to prevent duplicates
       const exists = imageHistory.some(
@@ -107,7 +113,11 @@ function App() {
 
   const handleSaveToHistory = (url, promptText) => {
     // Create a clone to trigger notification animation
-    const historyItem = { imageUrl: url, prompt: promptText }
+    const historyItem = { 
+      imageUrl: url, 
+      prompt: promptText,
+      generatedAt: generatedAt
+    }
     
     // Check if already exists
     const exists = imageHistory.some(
@@ -128,9 +138,10 @@ function App() {
     }
   }
 
-  const handleHistoryItemSelect = (historyImageUrl, historyPrompt) => {
+  const handleHistoryItemSelect = (historyImageUrl, historyPrompt, historyGeneratedAt) => {
     setImageUrl(historyImageUrl)
     setPrompt(historyPrompt)
+    setGeneratedAt(historyGeneratedAt)
     
     // Scroll to result
     document.getElementById('result-section')?.scrollIntoView({ behavior: 'smooth' })
@@ -176,6 +187,7 @@ function App() {
           <ImageResult 
             imageUrl={imageUrl} 
             prompt={prompt}
+            generatedAt={generatedAt}
             onSaveToHistory={handleSaveToHistory}
           />
         )}

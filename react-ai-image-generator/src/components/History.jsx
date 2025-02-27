@@ -9,6 +9,29 @@ const History = ({ imageHistory, onSelectImage }) => {
     return null;
   }
 
+  // Function to format the date if available
+  const formatDate = (dateString) => {
+    if (!dateString) return '';
+    
+    try {
+      const date = new Date(dateString);
+      const now = new Date();
+      const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
+      
+      if (diffDays === 0) {
+        return 'Today';
+      } else if (diffDays === 1) {
+        return 'Yesterday';
+      } else if (diffDays < 7) {
+        return `${diffDays} days ago`;
+      } else {
+        return date.toLocaleDateString();
+      }
+    } catch (e) {
+      return '';
+    }
+  };
+
   return (
     <div className="history-container">
       <div 
@@ -39,12 +62,12 @@ const History = ({ imageHistory, onSelectImage }) => {
             <div 
               key={index} 
               className="history-item"
-              onClick={() => onSelectImage(item.imageUrl, item.prompt)}
+              onClick={() => onSelectImage(item.imageUrl, item.prompt, item.generatedAt)}
               role="button"
               tabIndex={0}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
-                  onSelectImage(item.imageUrl, item.prompt);
+                  onSelectImage(item.imageUrl, item.prompt, item.generatedAt);
                   e.preventDefault();
                 }
               }}
@@ -53,6 +76,9 @@ const History = ({ imageHistory, onSelectImage }) => {
                 <img src={item.imageUrl} alt={item.prompt} />
               </div>
               <p className="history-prompt">{item.prompt}</p>
+              {item.generatedAt && (
+                <p className="history-date">{formatDate(item.generatedAt)}</p>
+              )}
             </div>
           ))}
         </div>
@@ -66,6 +92,7 @@ History.propTypes = {
     PropTypes.shape({
       imageUrl: PropTypes.string.isRequired,
       prompt: PropTypes.string.isRequired,
+      generatedAt: PropTypes.string
     })
   ).isRequired,
   onSelectImage: PropTypes.func.isRequired,

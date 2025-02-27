@@ -1,7 +1,9 @@
-Transaction Hash (string): 0xfeb9db71eb28979bfecf2ee254a319b052625f8bee20a00e04ab3dbecb86a1d1
+Transaction Hash (string): 0x4294208ebaa0952638a089f6742a676ae74a749081f424f80f2a21e3340f6640
 Transaction Hash Length: 66
-IPFS CID: Qm6b41e60012627a987010bb40aa7d8f609f55de1709c8
+IPFS CID: Qm6525c3c9b40154430377e8bbacead2521f96d2057d0d
 IPFS CID Length: 46
-Explorer URL: https://explorer.aeneid.storyrpc.io/tx/0xfeb9db71eb28979bfecf2ee254a319b052625f8bee20a00e04ab3dbecb86a1d1
-View Image URL: https://ipfs.io/ipfs/Qm6b41e60012627a987010bb40aa7d8f609f55de1709c8
-Timestamp: 2025-02-27T00:04:00.227Z
+IP Asset ID: 0xdd5fa3e6d17a7f966bc9adbe8512f1dd6d2ebfea62e24c81c9954bb61785a780
+IP Asset Explorer URL: https://aeneid.explorer.story.foundation/ipa/0xdd5fa3e6d17a7f966bc9adbe8512f1dd6d2ebfea62e24c81c9954bb61785a780
+Explorer URL: https://explorer.aeneid.storyrpc.io/tx/0x4294208ebaa0952638a089f6742a676ae74a749081f424f80f2a21e3340f6640
+View Image URL: https://ipfs.io/ipfs/Qm6525c3c9b40154430377e8bbacead2521f96d2057d0d
+Timestamp: 2025-02-27T00:12:09.284Z

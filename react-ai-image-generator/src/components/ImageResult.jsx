@@ -2,9 +2,15 @@ import { useState } from 'react';
 import PropTypes from 'prop-types';
 import '../styles/ImageResult.css';
 
-const ImageResult = ({ imageUrl, prompt, onSaveToHistory }) => {
+const ImageResult = ({ imageUrl, prompt, onSaveToHistory, generatedAt }) => {
   const [copied, setCopied] = useState(false);
   const [showShareOptions, setShowShareOptions] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageError, setImageError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  
+  // Format timestamp if available
+  const formattedTime = generatedAt ? new Date(generatedAt).toLocaleString() : null;
   
   const handleDownload = () => {
     if (imageUrl) {
@@ -53,13 +59,60 @@ const ImageResult = ({ imageUrl, prompt, onSaveToHistory }) => {
     setShowShareOptions(false);
   };
 
+  const handleImageLoad = () => {
+    setImageLoaded(true);
+    setImageError(false);
+  };
+
+  const handleImageError = () => {
+    setImageLoaded(true);
+    setImageError(true);
+    console.error('Image failed to load:', imageUrl);
+  };
+  
+  const handleRetry = () => {
+    // Reset states and increment retry counter
+    setImageLoaded(false);
+    setImageError(false);
+    setRetryCount(prev => prev + 1);
+    
+    // Add a cache-busting parameter to the URL
+    const cacheBuster = `?cb=${Date.now()}`;
+    const newUrl = imageUrl.includes('?') 
+      ? `${imageUrl}&cb=${Date.now()}`
+      : `${imageUrl}${cacheBuster}`;
+      
+    // Update the image src attribute directly in the DOM
+    const imgElement = document.querySelector('.generated-image');
+    if (imgElement) {
+      imgElement.src = newUrl;
+    }
+  };
+
   return (
     <div className="result-container">
       <div className="image-card">
-        <img src={imageUrl} alt={prompt} className="generated-image" />
+        {!imageLoaded && <div className="image-loading">Loading image...</div>}
+        
+        <img 
+          src={`${imageUrl}${retryCount > 0 ? `?cb=${Date.now()}` : ''}`}
+          alt={prompt} 
+          className={`generated-image ${imageLoaded ? 'loaded' : ''} ${imageError ? 'error' : ''}`}
+          onLoad={handleImageLoad}
+          onError={handleImageError}
+        />
+        
+        {imageError && (
+          <div className="image-error">
+            <p>Unable to load the image. The source might be temporarily unavailable or the image may have been removed.</p>
+            <button className="retry-btn" onClick={handleRetry}>Try Again</button>
+          </div>
+        )}
+        
         <div className="prompt-display">
           <h3>Prompt:</h3>
           <p>{prompt}</p>
+          {formattedTime && <p className="generation-time">Generated: {formattedTime}</p>}
         </div>
       </div>
       
@@ -133,7 +186,12 @@ const ImageResult = ({ imageUrl, prompt, onSaveToHistory }) => {
 ImageResult.propTypes = {
   imageUrl: PropTypes.string.isRequired,
   prompt: PropTypes.string.isRequired,
-  onSaveToHistory: PropTypes.func.isRequired
+  onSaveToHistory: PropTypes.func.isRequired,
+  generatedAt: PropTypes.string
+};
+
+ImageResult.defaultProps = {
+  generatedAt: null
 };
 
 export default ImageResult; 
