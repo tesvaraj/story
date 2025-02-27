@@ -1,0 +1,7 @@
+Transaction Hash (string): 0xfeb9db71eb28979bfecf2ee254a319b052625f8bee20a00e04ab3dbecb86a1d1
+Transaction Hash Length: 66
+IPFS CID: Qm6b41e60012627a987010bb40aa7d8f609f55de1709c8
+IPFS CID Length: 46
+Explorer URL: https://explorer.aeneid.storyrpc.io/tx/0xfeb9db71eb28979bfecf2ee254a319b052625f8bee20a00e04ab3dbecb86a1d1
+View Image URL: https://ipfs.io/ipfs/Qm6b41e60012627a987010bb40aa7d8f609f55de1709c8
+Timestamp: 2025-02-27T00:04:00.227Z

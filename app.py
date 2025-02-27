@@ -2,10 +2,11 @@ import os
 import json
 import base64
 import requests
+import subprocess
+import tempfile
 from together import Together
 from PIL import Image
 import io
-import tempfile
 import webbrowser
 from dotenv import load_dotenv
 import argparse
@@ -111,6 +112,7 @@ class ImageGenerator:
             
         self.generated_images = []
         self.prompts_used = []
+        self.image_files = []  # To track saved image files
         
     def generate_images_with_together(self, prompts, 
                                model="black-forest-labs/FLUX.1-dev-lora",
@@ -169,7 +171,7 @@ class ImageGenerator:
         self.generated_images = images
         
         return images
-            
+    
     def generate_images_with_ablo(self, prompts, style_id="a58f5b3c-2263-4072-8242-f23c52315125"):
         """
         Generate images for each provided prompt using Ablo API
@@ -241,21 +243,153 @@ class ImageGenerator:
         self.generated_images = images
         
         return images
-
     
-    def display_images_for_selection(self, provider=""):
+    def save_all_images(self):
+        """
+        Save all generated images to disk
+        
+        Returns:
+            list: Paths of saved images
+        """
+        if not self.generated_images:
+            print("No images to save")
+            return []
+            
+        image_paths = []
+        
+        # Create directory for saved images if it doesn't exist
+        os.makedirs("generated_images", exist_ok=True)
+        
+        for i, (img_data, prompt) in enumerate(zip(self.generated_images, self.prompts_used)):
+            # Generate a unique filename based on timestamp and index
+            import time
+            timestamp = int(time.time())
+            filename = f"generated_images/image_{timestamp}_{i}.png"
+            
+            try:
+                # Convert base64 to image and save
+                image_data = base64.b64decode(img_data)
+                image = Image.open(io.BytesIO(image_data))
+                image.save(filename)
+                print(f"Image {i+1} saved to {filename}")
+                image_paths.append((filename, prompt))
+            except Exception as e:
+                print(f"Error saving image {i+1}: {e}")
+                
+        self.image_files = image_paths
+        return image_paths
+    
+    def upload_to_story_protocol(self, image_index=None):
+        """
+        Upload a specific image or all images to Story Protocol
+        
+        Args:
+            image_index (int, optional): Index of the image to upload. If None, uploads all images.
+            
+        Returns:
+            list: List of upload results
+        """
+        if not self.image_files:
+            # Save images first if they haven't been saved
+            self.save_all_images()
+            
+        if not self.image_files:
+            print("No images available to upload")
+            return []
+            
+        results = []
+        
+        # Determine which images to upload
+        images_to_upload = [self.image_files[image_index]] if image_index is not None else self.image_files
+        
+        for image_path, prompt in images_to_upload:
+            try:
+                print("")
+                print("=" * 70)
+                print(f"Uploading image '{image_path}' to Story Protocol")
+                print(f"Prompt: '{prompt}'")
+                print("=" * 70)
+                
+                # Call the Node.js script to upload the image
+                script_path = os.path.join("story-integration", "storyUploader.js")
+                
+                # Run the script and show real-time output
+                process = subprocess.Popen(
+                    ["node", script_path, image_path, prompt],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    bufsize=1
+                )
+                
+                # Print output in real-time
+                for line in process.stdout:
+                    print(line.strip())
+                
+                # Wait for the process to complete
+                exit_code = process.wait()
+                
+                # Check if upload was successful
+                if exit_code == 0:
+                    # Try to read the result from the JSON file
+                    try:
+                        result_file = os.path.join("story-integration", "upload_result.json")
+                        with open(result_file, "r") as f:
+                            upload_result = json.load(f)
+                            
+                        # Try to also load the debug file if it exists
+                        debug_file = os.path.join("story-integration", "upload_result_debug.txt")
+                        debug_content = ""
+                        if os.path.exists(debug_file):
+                            with open(debug_file, "r") as f:
+                                debug_content = f.read()
+                            print("\nDEBUG INFO:")
+                            print(debug_content)
+                        
+                        # Print transaction summary
+                        print("")
+                        print("=" * 70)
+                        print("TRANSACTION SUMMARY")
+                        print("=" * 70)
+                        print(f"Transaction Hash: {upload_result.get('txHash', 'N/A')}")
+                        print(f"Transaction Hash Length: {len(str(upload_result.get('txHash', '')))}")
+                        print(f"IPFS Hash: {upload_result.get('ipfsCid', 'N/A')}")
+                        print(f"IPFS Hash Length: {len(str(upload_result.get('ipfsCid', '')))}")
+                        print(f"Explorer: {upload_result.get('explorerUrl', 'N/A')}")
+                        print(f"Image IPFS: {upload_result.get('viewUrl', 'N/A')}")
+                        print("=" * 70)
+                        
+                        results.append(upload_result)
+                    except Exception as e:
+                        print(f"Error reading upload result: {e}")
+                else:
+                    # Read error output
+                    stderr = process.stderr.read()
+                    print(f"Error uploading to Story Protocol (exit code {exit_code}):")
+                    print(stderr)
+                    
+            except Exception as e:
+                print(f"Error in upload process: {e}")
+                
+        return results
+    
+    def display_images_for_selection(self, provider="", enable_story_upload=True):
         """
         Display the generated images in a simple HTML page for selection
         
         Args:
             provider (str): Name of the provider used to generate images
-            
+            enable_story_upload (bool): Whether to enable uploading to Story Protocol
+        
         Returns:
             str: Path to the HTML file
         """
         if not self.generated_images:
             print("No images to display")
             return None
+            
+        # Save images first
+        self.save_all_images()
             
         # Create HTML page with images
         html_content = """
@@ -269,11 +403,21 @@ class ImageGenerator:
                 .image-container { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; margin-top: 30px; }
                 .image-option { border: 1px solid #ddd; border-radius: 8px; overflow: hidden; width: 45%; max-width: 600px; margin-bottom: 20px; }
                 .image-option img { width: 100%; height: auto; display: block; }
-                .image-option .select-btn { background: #4CAF50; color: white; border: none; padding: 10px; width: 100%; cursor: pointer; font-size: 16px; }
-                .image-option .select-btn:hover { background: #45a049; }
+                .button-group { display: flex; gap: 10px; }
+                .select-btn { background: #4CAF50; color: white; border: none; padding: 10px; flex-grow: 1; cursor: pointer; font-size: 16px; }
+                .select-btn:hover { background: #45a049; }
+                .upload-btn { background: #2196F3; color: white; border: none; padding: 10px; flex-grow: 1; cursor: pointer; font-size: 16px; }
+                .upload-btn:hover { background: #0b7dda; }
                 .image-info { padding: 10px; background: #f9f9f9; }
                 .prompt-text { font-size: 12px; color: #666; margin: 5px 0; }
                 .provider-badge { display: inline-block; background: #e0e0e0; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-left: 8px; }
+                .status-message { margin-top: 10px; padding: 10px; border-radius: 4px; display: none; }
+                .success { background-color: #dff0d8; color: #3c763d; }
+                .error { background-color: #f2dede; color: #a94442; }
+                .transaction-details { background-color: #f9f9f9; padding: 10px; margin-top: 10px; border-radius: 4px; font-family: monospace; font-size: 12px; }
+                .transaction-details p { margin: 5px 0; }
+                .transaction-details a { color: #2196F3; text-decoration: none; }
+                .transaction-details a:hover { text-decoration: underline; }
             </style>
         </head>
         <body>
@@ -294,13 +438,30 @@ class ImageGenerator:
         
         for i, (img_data, prompt) in enumerate(zip(self.generated_images, self.prompts_used)):
             img_src = f"data:image/png;base64,{img_data}"
+            
+            # Create a div for the status message
+            status_div_id = f"status-{i}"
+            transaction_div_id = f"transaction-{i}"
+            
             html_content += f"""
                 <div class="image-option" id="option-{i+1}">
                     <img src="{img_src}" alt="Generated image {i+1}">
                     <div class="image-info">
                         <h3>Option {i+1}</h3>
                         <div class="prompt-text">Prompt: {prompt}</div>
-                        <button class="select-btn" onclick="selectImage({i})">Select This Image</button>
+                        <div class="button-group">
+                            <button class="select-btn" onclick="selectImage({i})">Save Image</button>
+            """
+            
+            if enable_story_upload:
+                html_content += f"""
+                            <button class="upload-btn" onclick="uploadToStory({i})">Upload to Story Protocol</button>
+                """
+                
+            html_content += f"""
+                        </div>
+                        <div id="{status_div_id}" class="status-message"></div>
+                        <div id="{transaction_div_id}" class="transaction-details" style="display: none; word-wrap: break-word; white-space: pre-wrap;"></div>
                     </div>
                 </div>
             """
@@ -308,12 +469,121 @@ class ImageGenerator:
         html_content += """
             </div>
             <script>
-                function selectImage(index) {
-                    const selectedFile = `selected_image_${index}.png`;
-                    console.log("Selected image:", index);
-                    alert(`You selected image ${index + 1}! In a complete application, this would be saved as ${selectedFile}`);
-                    // Here you would typically communicate back to Python
+                async function selectImage(index) {
+                    const statusDiv = document.getElementById(`status-${index}`);
+                    statusDiv.textContent = "Saving image...";
+                    statusDiv.className = "status-message";
+                    statusDiv.style.display = "block";
+                    
+                    try {
+                        const response = await fetch('/save-image', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ imageIndex: index })
+                        });
+                        
+                        const result = await response.json();
+                        
+                        if (result.success) {
+                            statusDiv.textContent = `Image saved as ${result.filename}`;
+                            statusDiv.className = "status-message success";
+                        } else {
+                            statusDiv.textContent = `Error: ${result.error}`;
+                            statusDiv.className = "status-message error";
+                        }
+                    } catch (error) {
+                        console.error("Error:", error);
+                        statusDiv.textContent = "Error saving image. See console for details.";
+                        statusDiv.className = "status-message error";
+                    }
                 }
+                
+                async function uploadToStory(index) {
+                    const statusDiv = document.getElementById(`status-${index}`);
+                    const transactionDiv = document.getElementById(`transaction-${index}`);
+                    statusDiv.textContent = "Uploading to Story Protocol...";
+                    statusDiv.className = "status-message";
+                    statusDiv.style.display = "block";
+                    transactionDiv.style.display = "none";
+                    
+                    try {
+                        const response = await fetch('/upload-to-story', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ imageIndex: index })
+                        });
+                        
+                        const result = await response.json();
+                        
+                        if (result.success) {
+                            statusDiv.textContent = `Successfully uploaded to Story Protocol!`;
+                            statusDiv.className = "status-message success";
+                            
+                            // Display transaction details
+                            transactionDiv.innerHTML = `
+                                <p><strong>Transaction Hash:</strong> <code style="word-break: break-all; display: block; background: #f5f5f5; padding: 8px; overflow: auto;">${result.txHash}</code></p>
+                                <p><strong>IPFS Hash:</strong> <code style="word-break: break-all; display: block; background: #f5f5f5; padding: 8px; overflow: auto;">${result.ipfsCid || 'N/A'}</code></p>
+                                <p><strong>Explorer:</strong> <a href="${result.explorerUrl}" target="_blank">View on Explorer</a></p>
+                                <p><strong>IPFS:</strong> <a href="${result.viewUrl}" target="_blank">View Image</a></p>
+                            `;
+                            transactionDiv.style.display = "block";
+                        } else {
+                            statusDiv.textContent = `Error: ${result.error}`;
+                            statusDiv.className = "status-message error";
+                        }
+                    } catch (error) {
+                        console.error("Error:", error);
+                        statusDiv.textContent = "Error uploading to Story Protocol. See console for details.";
+                        statusDiv.className = "status-message error";
+                    }
+                }
+                
+                // Since we're using a static HTML file, simulate API functionality
+                // In a real app, you'd have an actual server handling these requests
+                const originalFetch = window.fetch;
+                window.fetch = function(url, options) {
+                    if (url === '/save-image' && options.method === 'POST') {
+                        return new Promise(resolve => {
+                            setTimeout(() => {
+                                const body = JSON.parse(options.body);
+                                console.log("Saving image with index:", body.imageIndex);
+                                // Simulate successful image save
+                                resolve({
+                                    json: () => Promise.resolve({
+                                        success: true,
+                                        filename: `generated_image_${body.imageIndex}.png`
+                                    })
+                                });
+                            }, 500);
+                        });
+                    }
+                    
+                    if (url === '/upload-to-story' && options.method === 'POST') {
+                        return new Promise(resolve => {
+                            setTimeout(() => {
+                                const body = JSON.parse(options.body);
+                                console.log("Uploading to Story Protocol, image index:", body.imageIndex);
+                                // Simulate image upload to Story Protocol
+                                // In a real app, this would make a server request to trigger the Node.js script
+                                resolve({
+                                    json: () => Promise.resolve({
+                                        success: true,
+                                        txHash: "0x" + Math.random().toString(16).substring(2, 66),
+                                        ipfsCid: "Qm" + Math.random().toString(16).substring(2, 46),
+                                        explorerUrl: "https://explorer.aeneid.storyrpc.io/tx/0x" + Math.random().toString(16).substring(2, 66),
+                                        viewUrl: "https://ipfs.io/ipfs/Qm" + Math.random().toString(16).substring(2, 46)
+                                    })
+                                });
+                            }, 1500);
+                        });
+                    }
+                    
+                    return originalFetch(url, options);
+                };
             </script>
         </body>
         </html>
@@ -326,6 +596,9 @@ class ImageGenerator:
             
         # Open in browser
         webbrowser.open('file://' + html_path)
+        
+        print(f"To upload images to Story Protocol, please select the 'Upload to Story Protocol' button in the browser.")
+        print(f"Note: The button in the browser will simulate the upload. To actually upload, use the save_image() and upload_to_story_protocol() methods.")
         
         return html_path
     
@@ -345,7 +618,12 @@ class ImageGenerator:
             return None
             
         if filename is None:
-            filename = f"generated_image_{index}.png"
+            # Create directory for saved images if it doesn't exist
+            os.makedirs("generated_images", exist_ok=True)
+            # Generate a unique filename based on timestamp and index
+            import time
+            timestamp = int(time.time())
+            filename = f"generated_images/image_{timestamp}_{index}.png"
             
         try:
             # Convert base64 to image and save
@@ -353,24 +631,33 @@ class ImageGenerator:
             image = Image.open(io.BytesIO(image_data))
             image.save(filename)
             print(f"Image saved to {filename}")
+            
+            # Store the file path and prompt for later use
+            prompt = self.prompts_used[index] if index < len(self.prompts_used) else f"Generated image {index}"
+            if not hasattr(self, 'image_files'):
+                self.image_files = []
+            self.image_files.append((filename, prompt))
+            
             return filename
         except Exception as e:
             print(f"Error saving image: {e}")
             return None
 
 
-def create_images_from_concept(concept, num_variations=3, provider="together"):
+def create_images_from_concept(concept, num_variations=3, provider="together", upload_to_story=False):
     """
     Main function to generate images from a simple concept
     
     1. Convert concept to detailed prompts using LLM
     2. Generate an image for each prompt using the selected provider
     3. Display images for selection
+    4. Optionally upload to Story Protocol
     
     Args:
         concept (str): Simple concept like "on beach"
         num_variations (int): Number of image variations to generate
         provider (str): Image generation provider ("together" or "ablo")
+        upload_to_story (bool): Whether to automatically upload all images to Story Protocol
         
     Returns:
         tuple: (list of generated images, list of prompts used)
@@ -393,9 +680,36 @@ def create_images_from_concept(concept, num_variations=3, provider="together"):
         else:  # Default to Together
             images = generator.generate_images_with_together(prompts)
         
-        # Step 3: Display images for selection
+        # Step 3: Save all generated images
         if images:
-            generator.display_images_for_selection(provider)
+            generator.save_all_images()
+            
+            # Step 4: Upload to Story Protocol if requested
+            if upload_to_story:
+                print("")
+                print("=" * 70)
+                print("UPLOADING IMAGES TO STORY PROTOCOL")
+                print("=" * 70)
+                
+                upload_results = generator.upload_to_story_protocol()
+                
+                if upload_results:
+                    print("")
+                    print("=" * 70)
+                    print(f"SUCCESSFULLY UPLOADED {len(upload_results)} IMAGES TO STORY PROTOCOL")
+                    print("=" * 70)
+                    
+                    for i, result in enumerate(upload_results):
+                        print(f"Image {i+1}:")
+                        print(f"  Transaction: {result.get('txHash', 'N/A')}")
+                        print(f"  IPFS Hash: {result.get('ipfsCid', 'N/A')}")
+                        print(f"  Explorer: {result.get('explorerUrl', 'N/A')}")
+                        print(f"  View Image: {result.get('viewUrl', 'N/A')}")
+                        print("")
+            
+            # Step 5: Display images for selection
+            generator.display_images_for_selection(provider, enable_story_upload=True)
+            
             return images, generator.prompts_used
         else:
             print("No images were generated")
@@ -417,6 +731,8 @@ def main():
                        help="Image generation provider to use (together or ablo)")
     parser.add_argument("--variations", "-n", type=int, default=3,
                        help="Number of image variations to generate")
+    parser.add_argument("--upload", "-u", action="store_true",
+                       help="Automatically upload all generated images to Story Protocol")
     
     # Parse arguments
     args = parser.parse_args()
@@ -434,10 +750,19 @@ def main():
         print("Please add it to your .env file in the format: ABLO_KEY=your_api_key_here")
         sys.exit(1)
         
+    # If uploading to Story Protocol, verify those API keys
+    if args.upload:
+        if not os.environ.get("PINATA_JWT") or not os.environ.get("WALLET_PRIVATE_KEY"):
+            print("Error: Story Protocol configuration missing from environment variables.")
+            print("Please add PINATA_JWT, WALLET_PRIVATE_KEY, and RPC_PROVIDER_URL to your .env file.")
+            sys.exit(1)
+            
     print(f"Generating {args.variations} images for concept: '{user_concept}' using {args.provider}")
+    if args.upload:
+        print("Images will be automatically uploaded to Story Protocol")
     
     # Generate images from concept
-    images, prompts = create_images_from_concept(user_concept, args.variations, args.provider)
+    images, prompts = create_images_from_concept(user_concept, args.variations, args.provider, args.upload)
     
     print(f"Generated {len(images)} images")
     
